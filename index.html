@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>透明余白自動トリミング ＆ リサイズツール</title>
+  <title>透明余白自動トリミング ＆ リサイズ</title>
   <style>
     * {
       box-sizing: border-box;
@@ -215,7 +215,6 @@
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        // アルファ値を検出して境界を見つける
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = img.width;
@@ -250,7 +249,6 @@
         const trimmedWidth = maxX - minX + 1;
         const trimmedHeight = maxY - minY + 1;
 
-        // トリミング画像の生成
         const trimmedCanvas = document.createElement('canvas');
         const trimmedCtx = trimmedCanvas.getContext('2d');
         trimmedCanvas.width = trimmedWidth;
@@ -296,13 +294,12 @@
         </div>
       </div>
       <div class="action-area">
-        <a id="btn_${cardId}" class="btn-download" href="#" download="">保存する</a>
+        <button id="btn_${cardId}" class="btn-download">保存 / 共有する</button>
       </div>
     `;
 
     previewList.prepend(card);
 
-    // 要素参照
     const imgElem = card.querySelector(`#img_${cardId}`);
     const keepAspectCheck = card.querySelector(`#keepAspect_${cardId}`);
     const widthInput = card.querySelector(`#width_${cardId}`);
@@ -310,8 +307,9 @@
     const downloadBtn = card.querySelector(`#btn_${cardId}`);
 
     const aspectRatio = trimmedW / trimmedH;
+    let currentBlob = null;
+    let currentFileName = '';
 
-    // 画像再生成・描画処理
     function updateResizedImage() {
       let targetW = parseInt(widthInput.value) || 1;
       let targetH = parseInt(heightInput.value) || 1;
@@ -323,15 +321,45 @@
 
       ctx.drawImage(trimmedCanvas, 0, 0, trimmedW, trimmedH, 0, 0, targetW, targetH);
 
-      const dataUrl = outputCanvas.toDataURL('image/png');
-      imgElem.src = dataUrl;
-      downloadBtn.href = dataUrl;
-
       const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
-      downloadBtn.download = `${nameWithoutExt}_${targetW}x${targetH}.png`;
+      currentFileName = `${nameWithoutExt}_${targetW}x${targetH}.png`;
+
+      // CanvasからBlobオブジェクトを作成
+      outputCanvas.toBlob((blob) => {
+        currentBlob = blob;
+        imgElem.src = URL.createObjectURL(blob);
+      }, 'image/png');
     }
 
-    // イベントリスナー（px変更や比率チェック時の挙動）
+    // 保存ボタンクリック時のダイアログ・共有処理
+    downloadBtn.addEventListener('click', async () => {
+      if (!currentBlob) return;
+
+      const file = new File([currentBlob], currentFileName, { type: 'image/png' });
+
+      // スマホ（iOS/Android）のWeb Share APIが利用可能な場合
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: '画像を保存',
+          });
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            console.error(err);
+          }
+        }
+      } else {
+        // PCや非対応ブラウザの場合（通常の自動ダウンロード）
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(currentBlob);
+        a.download = currentFileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    });
+
     widthInput.addEventListener('input', () => {
       if (keepAspectCheck.checked && widthInput.value) {
         heightInput.value = Math.round(widthInput.value / aspectRatio);
@@ -353,7 +381,6 @@
       }
     });
 
-    // 初期処理
     updateResizedImage();
   }
 </script>
